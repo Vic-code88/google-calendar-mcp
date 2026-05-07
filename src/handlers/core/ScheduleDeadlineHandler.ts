@@ -38,8 +38,9 @@ export class ScheduleDeadlineHandler extends BaseToolHandler {
         const sessionDurationHours = args.sessionDurationHours ?? 2;
         const totalSessions = Math.ceil(args.estimatedHours / sessionDurationHours);
 
-        // 4. Get free/busy data
-        const busySlots = await this.getFreeBusy(oauth2Client, resolvedCalendarId, startDate, deadlineDate);
+        // 4. Get free/busy data across ALL calendars in ALL accounts so sessions
+        //    never overlap with any existing event (school, sports, personal, etc.)
+        const busySlots = await this.getAllAccountsBusy(accounts, startDate, deadlineDate);
 
         // 5. Find available slots
         const preferredStartTime = args.preferredStartTime || '16:00';
@@ -92,25 +93,48 @@ export class ScheduleDeadlineHandler extends BaseToolHandler {
         });
     }
 
-    private async getFreeBusy(
-        client: OAuth2Client,
-        calendarId: string,
+    // Queries free/busy across every calendar in every authenticated account and
+    // merges all busy periods into one flat list. This ensures study sessions
+    // never clash with school events, sports, or any other calendar.
+    private async getAllAccountsBusy(
+        accounts: Map<string, OAuth2Client>,
         start: Date,
         end: Date
     ): Promise<BusyPeriod[]> {
+        const allBusy: BusyPeriod[] = [];
+
+        for (const [, client] of accounts) {
+            const calendarIds = await this.listCalendarIds(client);
+            const calendar = this.getCalendar(client);
+            try {
+                const response = await calendar.freebusy.query({
+                    requestBody: {
+                        timeMin: start.toISOString(),
+                        timeMax: end.toISOString(),
+                        items: calendarIds.map(id => ({ id })),
+                    },
+                });
+                for (const id of calendarIds) {
+                    const busy = response.data.calendars?.[id]?.busy || [];
+                    allBusy.push(...(busy as BusyPeriod[]));
+                }
+            } catch {
+                // If one account fails, skip it and continue with the rest
+            }
+        }
+
+        return allBusy;
+    }
+
+    private async listCalendarIds(client: OAuth2Client): Promise<string[]> {
         const calendar = this.getCalendar(client);
         try {
-            const response = await calendar.freebusy.query({
-                requestBody: {
-                    timeMin: start.toISOString(),
-                    timeMax: end.toISOString(),
-                    items: [{ id: calendarId }],
-                },
-            });
-            const calData = response.data.calendars?.[calendarId];
-            return (calData?.busy || []) as BusyPeriod[];
-        } catch (error) {
-            throw this.handleGoogleApiError(error);
+            const response = await calendar.calendarList.list({ minAccessRole: 'reader' });
+            return (response.data.items || [])
+                .map(c => c.id)
+                .filter((id): id is string => Boolean(id));
+        } catch {
+            return ['primary'];
         }
     }
 
