@@ -409,6 +409,48 @@ export class HttpTransportHandler {
         return;
       }
 
+      // GET /deadline-planner - Serve the IB deadline planner web app
+      if (req.method === 'GET' && req.url === '/deadline-planner') {
+        try {
+          const html = await loadWebFile('deadline-planner.html');
+          res.writeHead(200, { 'Content-Type': 'text/html', ...SECURITY_HEADERS });
+          res.end(html);
+        } catch {
+          res.writeHead(404, { 'Content-Type': 'text/plain' });
+          res.end('Deadline planner not found');
+        }
+        return;
+      }
+
+      // POST /api/schedule-deadline - Schedule IB deadline sessions
+      if (req.method === 'POST' && req.url === '/api/schedule-deadline') {
+        try {
+          const body = await this.parseRequestBody(req);
+          const accounts = await this.tokenManager.loadAllAccounts();
+
+          if (accounts.size === 0) {
+            res.writeHead(401, { 'Content-Type': 'application/json', ...SECURITY_HEADERS });
+            res.end(JSON.stringify({ error: 'No authenticated accounts. Please authenticate first at /accounts' }));
+            return;
+          }
+
+          const { ScheduleDeadlineHandler } = await import('../handlers/core/ScheduleDeadlineHandler.js');
+          const handler = new ScheduleDeadlineHandler();
+          const result = await handler.runTool(body, accounts);
+
+          const text = result.content[0]?.type === 'text' ? result.content[0].text : '{}';
+          const data = JSON.parse(text);
+
+          res.writeHead(200, { 'Content-Type': 'application/json', ...SECURITY_HEADERS });
+          res.end(JSON.stringify(data));
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          res.writeHead(400, { 'Content-Type': 'application/json', ...SECURITY_HEADERS });
+          res.end(JSON.stringify({ error: message }));
+        }
+        return;
+      }
+
       // Handle health check endpoint
       if (req.method === 'GET' && req.url === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });

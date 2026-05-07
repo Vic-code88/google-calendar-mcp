@@ -18,6 +18,7 @@ import { DeleteEventHandler } from "../handlers/core/DeleteEventHandler.js";
 import { FreeBusyEventHandler } from "../handlers/core/FreeBusyEventHandler.js";
 import { GetCurrentTimeHandler } from "../handlers/core/GetCurrentTimeHandler.js";
 import { RespondToEventHandler } from "../handlers/core/RespondToEventHandler.js";
+import { ScheduleDeadlineHandler } from "../handlers/core/ScheduleDeadlineHandler.js";
 
 // ============================================================================
 // SHARED VALIDATION PATTERNS
@@ -744,7 +745,22 @@ export const ToolSchemas = {
       message: "originalStartTime is required when modificationScope is 'thisEventOnly'",
       path: ["originalStartTime"]
     }
-  )
+  ),
+
+  'schedule-deadline': z.object({
+    taskName: z.string().describe("Name of the task, e.g. 'Biology IA', 'History EE', 'Math HL'"),
+    taskType: z.enum(['IA', 'EE', 'exam', 'other']).describe("Type of IB task"),
+    deadline: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Deadline date in YYYY-MM-DD format"),
+    estimatedHours: z.number().positive().describe("Total hours of work needed to complete the task"),
+    sessionDurationHours: z.number().positive().default(2).optional().describe("Duration of each study session in hours (default: 2)"),
+    preferredStartTime: z.string().regex(/^\d{2}:\d{2}$/).default('16:00').optional().describe("Preferred daily start time for sessions in HH:MM format (default: 16:00)"),
+    preferredEndTime: z.string().regex(/^\d{2}:\d{2}$/).default('21:00').optional().describe("Preferred daily end time for sessions in HH:MM format (default: 21:00)"),
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Date to start scheduling from (default: today)"),
+    calendarId: z.string().optional().describe("Calendar ID to use (default: primary)"),
+    account: z.string().optional().describe("Account nickname to use"),
+    timeZone: z.string().optional().describe("Timezone for the sessions (e.g. 'Europe/London')"),
+    colorId: z.string().optional().describe("Google Calendar color ID for the events (1-11)"),
+  }),
 } as const;
 
 // Generate TypeScript types from schemas
@@ -765,6 +781,7 @@ export type DeleteEventInput = ToolInputs['delete-event'];
 export type GetFreeBusyInput = ToolInputs['get-freebusy'];
 export type GetCurrentTimeInput = ToolInputs['get-current-time'];
 export type RespondToEventInput = ToolInputs['respond-to-event'];
+export type ScheduleDeadlineInput = ToolInputs['schedule-deadline'];
 
 interface ToolDefinition {
   name: keyof typeof ToolSchemas;
@@ -979,6 +996,14 @@ export class ToolRegistry {
       annotations: WRITE_NON_DESTRUCTIVE_IDEMPOTENT_ANNOTATIONS,
       schema: ToolSchemas['respond-to-event'],
       handler: RespondToEventHandler
+    },
+    {
+      name: "schedule-deadline",
+      title: "Schedule IB Deadline",
+      description: "Schedule study/work sessions for an IB task (IA, EE, exam) by automatically finding free time slots in your calendar and creating sessions leading up to the deadline. Avoids conflicts with existing events.",
+      annotations: WRITE_NON_DESTRUCTIVE_ANNOTATIONS,
+      schema: ToolSchemas['schedule-deadline'],
+      handler: ScheduleDeadlineHandler,
     }
   ];
 
