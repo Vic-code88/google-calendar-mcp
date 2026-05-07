@@ -78,7 +78,8 @@ describe('Tool Registration', () => {
       'delete-event': 'Delete Calendar Event',
       'get-freebusy': 'Get Free/Busy',
       'get-current-time': 'Get Current Time',
-      'respond-to-event': 'Respond to Event Invitation'
+      'respond-to-event': 'Respond to Event Invitation',
+      'schedule-deadline': 'Schedule IB Deadline'
     };
 
     const expectedAnnotations: Record<string, Record<string, boolean>> = {
@@ -117,6 +118,12 @@ describe('Tool Registration', () => {
         readOnlyHint: false,
         destructiveHint: false,
         idempotentHint: true,
+        openWorldHint: false
+      },
+      'schedule-deadline': {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
         openWorldHint: false
       }
     };
